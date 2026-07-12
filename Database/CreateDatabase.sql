@@ -57,10 +57,10 @@ CREATE TABLE [dbo].[Users] (
     CONSTRAINT [FK_Users_Manager] FOREIGN KEY ([ManagerId]) REFERENCES [Users]([Id])
 );
 
--- userName is unique PER TENANT, not globally. Different tenants are independent
--- SCIM identity stores; the same userName can legitimately exist in two of them.
-CREATE UNIQUE NONCLUSTERED INDEX [UQ_Users_TenantId_UserName] ON [Users]([TenantId], [UserName]);
-
+-- NOTE: userName uniqueness is PER TENANT. The composite unique index
+-- UQ_Users_TenantId_UserName is created by DatabaseMigrator v13 — AFTER v8 adds
+-- the TenantId column. It must NOT be created here: TenantId does not exist yet
+-- in this baseline, so creating it here aborts the whole initial-schema run.
 CREATE INDEX [IX_Users_UserName] ON [Users]([UserName]);
 CREATE INDEX [IX_Users_ExternalId] ON [Users]([ExternalId]);
 CREATE INDEX [IX_Users_Active] ON [Users]([Active]);

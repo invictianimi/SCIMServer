@@ -1,22 +1,16 @@
-# ============================================================================
-# UNITE-SCIMMappings - Attribute mapping table for the UNITE Provisioning Hub
-# ----------------------------------------------------------------------------
-# This is the ONLY file you edit to add a new SCIM target. The universal SCIM
-# engine in UNITE-SCIMRest reads this table at runtime.
-#
-# Adding a new app:
-#   1) Add an entry to $script:SCIMMappings keyed by your AppKey (no spaces,
-#      e.g. "JiraCloud", "Workday", "SnowflakeAdmin")
-#   2) Map SCIM payload paths to AD attribute names (or literals, or computed
-#      values - see README.md for full syntax)
-#   3) Register the matching workflow parameters (SCIM-<AppKey>-URI,
-#      SCIM-<AppKey>-Token) on the UNITE Provisioning Hub workflow
-#   4) Add the per-app function (Provision-<AppKey> / Disable-<AppKey>) and
-#      wire it into the workflow's IfElse branches
-#
-# Brought to you by iC Consult • Identity & Access Management specialists
-# We build IAM solutions that don't break.  sales@ic-consult.com
-# ============================================================================
+# =============================================================================
+#  UNITE 2026   |   One Identity UNITE Conference
+#  Chicago, USA   |   June 2026   |   Grand Ballroom III
+# =============================================================================
+#  Script   : UNITE-SCIMMappings.ps1
+#  Purpose  : The maps the UNITE-SCIMRest engine reads at runtime - the ONLY
+#             file you edit to add a target, a role, or an auto-assign rule:
+#               $script:SCIMMappings    AD attributes -> SCIM user payload
+#               $script:SCIMRoles       AD role group -> SCIM entitlement group(s)
+#               $script:ABACDeptRoles   department    -> role(s) to auto-assign
+#  Author   : Jacob Maloney  -  iC Consult, Presales Architect
+#  Contact  : sales@ic-consult.com   (We build IAM that doesn't break.)
+# =============================================================================
 
 # ---- Mapping value types ---------------------------------------------------
 #  "sAMAccountName"            Plain string  -> read the named AD attribute
@@ -44,6 +38,22 @@
 # ============================================================================
 
 $script:SCIMMappings = @{
+
+    # ------------------------------------------------------------------------
+    # HelpDesk - the focus app. Baseline account (everyone submits tickets);
+    # the Auditor / Operator / Administrator roles are SCIM Group entitlements
+    # layered on top. Keys on sAMAccountName.
+    # ------------------------------------------------------------------------
+    "HelpDesk" = @{
+        "userName"          = "sAMAccountName"
+        "name.givenName"    = "givenName"
+        "name.familyName"   = "sn"
+        "displayName"       = "displayName"
+        "emails[0].value"   = "mail"
+        "emails[0].type"    = "=work"
+        "emails[0].primary" = "=true"
+        "active"            = "=true"
+    }
 
     # ------------------------------------------------------------------------
     # HR Connect - minimal core schema, just identity + email
@@ -157,3 +167,78 @@ function Get-SCIMAppConfig {
     }
     return @{}   # empty -> all defaults apply
 }
+
+# ============================================================================
+# ROLE MAP (RBAC)  - AD role group -> SCIM entitlement(s) in target system(s)
+# ----------------------------------------------------------------------------
+# The "add to role" workflow reads this. A role is an AD security group; the
+# entries say which SCIM Group it grants, in which target app. Add a role by
+# adding one key. A role may grant entitlements in MULTIPLE apps - list them all.
+#
+#   Key    = the AD role group's name (matches what the workflow passes as RoleName)
+#   Value  = array of @{ AppKey = "<app in $script:SCIMMappings>"; Group = "<SCIM group displayName>" }
+#
+# NOTE: each entitlement's AppKey must ALSO have a user mapping above (so the
+# engine can find-or-provision the account before adding it to the group).
+#
+# This is the RBAC half of the talk. The SoD toxic-pair table lives separately
+# in UNITE-SoDPolicy.ps1 (it's an ARS Policy object, not part of this engine).
+# ============================================================================
+
+$script:SCIMRoles = @{
+
+    # Finance roles -> entitlements in Finance Suite
+    "Finance Clerk"       = @( @{ AppKey = "FinanceSuite";     Group = "Finance Clerks" } )
+    "Accounts Payable"    = @( @{ AppKey = "FinanceSuite";     Group = "Accounts Payable" } )
+    "Accounts Receivable" = @( @{ AppKey = "FinanceSuite";     Group = "Accounts Receivable" } )
+
+    # IT role -> entitlement in the Helpdesk portal
+    "IT Support"          = @( @{ AppKey = "ITHelpdeskPortal"; Group = "Helpdesk Agents" } )
+
+    # Example of a role that fans out to TWO targets at once:
+    # "Finance Admin"     = @(
+    #     @{ AppKey = "FinanceSuite";     Group = "Finance Admins" }
+    #     @{ AppKey = "ITHelpdeskPortal"; Group = "App Admins" }
+    # )
+}
+
+function Get-SCIMRole {
+    param([Parameter(Mandatory=$true)][string]$RoleName)
+    if ($script:SCIMRoles -and $script:SCIMRoles.ContainsKey($RoleName)) {
+        return $script:SCIMRoles[$RoleName]
+    }
+    return $null   # unmapped role -> AD-only, engine no-ops on the REST side
+}
+
+# ============================================================================
+# ABAC MAP  - attribute value (department) -> role(s) to auto-assign
+# ----------------------------------------------------------------------------
+# The ABAC auto-assign workflow reads this on a department change. Each
+# department maps to one or more roles (keys of $script:SCIMRoles). The engine
+# adds the user to each role; the SoD policy refuses any toxic auto-grant.
+# This is the ABAC half of the talk - access that follows the attribute, no ticket.
+# ============================================================================
+$script:ABACDeptRoles = @{
+    "Finance"  = @("Finance Clerk")
+    "IT"       = @("IT Support")
+    # A department can drive several roles:
+    # "Treasury" = @("Finance Clerk", "Accounts Payable")
+}
+
+function Get-ABACRolesForDept {
+    param([Parameter(Mandatory=$true)][string]$Dept)
+    if ($script:ABACDeptRoles -and $script:ABACDeptRoles.ContainsKey($Dept)) {
+        return $script:ABACDeptRoles[$Dept]
+    }
+    return @()
+}
+
+# ============================================================================
+# BEARER-TOKEN PROTECTION
+# ----------------------------------------------------------------------------
+# Token secrecy is now handled the ARS-NATIVE way: the SCIM-<App>-Token workflow
+# parameter is a SecureString (ARS encrypts it with its service key on save), and
+# the engine decrypts it at runtime via $Security.Cryptography.DecryptFromString
+# in _Get-SCIMContext. No key lives in this module. (The earlier AES-key helper
+# pair was removed in favor of this.)
+# ============================================================================

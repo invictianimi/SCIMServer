@@ -1,82 +1,114 @@
 # =============================================================================
-# UNITE-BonusDay - script module backing the "UNITE Examples - Bonus Day Off"
-# workflow. Demonstrates 8 common ARS workflow patterns the audience asks about:
+#  UNITE 2026   |   One Identity UNITE Conference
+#  Chicago, USA   |   June 2026   |   Grand Ballroom III
+# =============================================================================
+#  Script   : UNITE-BonusDay.ps1
+#  Purpose  : Script module behind the "UNITE - Extend Contractor" workflow -
+#             eight common ARS workflow patterns in one demo. A contractor is
+#             hired with accountExpires = today+90; the manager presses "Extend
+#             Contractor Access", manager approval fires, accountExpires bumps,
+#             and a counter caps total extensions.
+#  Author   : Jacob Maloney  -  iC Consult, Presales Architect
+#  Contact  : sales@ic-consult.com   (We build IAM that doesn't break.)
+# =============================================================================
 #
 #   Ex 1  Virtual attribute              (config - see SETUP.md)
-#   Ex 2  Pass parameter to script        $Workflow.Parameter("BonusDayCap")
+#   Ex 2  Pass parameter to script        $Workflow.Parameter("ExtensionCap")
 #   Ex 3  Return value from script        Set-WorkflowVariable + Write-Output
 #   Ex 4  Web Interface button            (config - see SETUP.md)
-#   Ex 5  AddRecordToReport               (lives in the workflow XAML)
-#   Ex 6  IfElse branching                (lives in the workflow XAML)
-#   Ex 7  Update target via Set-QADObject Set-QADObject inside Ex7-GrantBonusDay
-#   Ex 8  Approval activity               (lives in the workflow XAML)
+#   Ex 5  AddRecordToReport               (in the workflow XAML)
+#   Ex 6  IfElse branching                (in the workflow XAML)
+#   Ex 7  Update target via Set-QADObject Set-QADObject inside Ex7-ExtendAccess
+#   Ex 8  Approval activity               (added in MMC - per SETUP.md)
 #
-# Brought to you by iC Consult * Identity & Access Management specialists
-# We build IAM solutions that don't break.  sales@ic-consult.com
+# File is named UNITE-BonusDay.ps1 on disk for git history continuity; the
+# deployed ARS ScriptModule is renamed to "UNITE-ExtendContractor".
 # =============================================================================
 
-# Cap value for "how many bonus days can a user accumulate". This is the
-# DEFAULT - the workflow's Parameters dialog overrides it per-deploy. Demo
-# of Example 2: workflow parameter -> script.
-$script:DefaultBonusDayCap = 5
+# Default cap. The workflow's Parameters dialog overrides this per-deploy
+# (workflow parameter "ExtensionCap"). Demo of Ex 2.
+$script:DefaultExtensionCap = 5
 
 function Ex2-ReadContext {
     # EXAMPLE 2 + reading object attributes.
-    # Pull three values from three different sources:
-    #   - $Workflow.Parameter("BonusDayCap")  workflow-level parameter (Ex 2)
-    #   - $Request.Get("edsva-BonusDayRequest")  the modified attribute the
-    #       Web Interface button set (Ex 4 trigger path)
-    #   - $Request.Get("manager")  current AD value, used for Ex 8 approval
+    # The WI button writes the requested # of days into edsva-ExtendAccessRequest
+    # (string holding an integer). Defaults to 5 if blank or unparseable.
     try {
-        $cap = $Workflow.Parameter("BonusDayCap")
-        if (-not $cap) { $cap = $script:DefaultBonusDayCap }
-        $reason  = "$($Request.Get('edsva-BonusDayRequest'))".Trim()
+        $cap = $Workflow.Parameter("ExtensionCap")
+        if (-not $cap) { $cap = $script:DefaultExtensionCap }
+        $daysStr = "$($Request.Get('edsva-ExtendAccessRequest'))".Trim()
+        $days = 0
+        if (-not [int]::TryParse($daysStr, [ref]$days) -or $days -le 0) { $days = 5 }
+
         $manager = "$($Request.Get('manager'))".Trim()
         $sam     = "$($Request.Get('sAMAccountName'))".Trim()
 
-        # Stash in script scope so downstream activities in this same workflow
-        # run can read them without going back to AD - Example 3 pattern.
-        $script:BD_Cap     = [int]$cap
-        $script:BD_Reason  = $reason
-        $script:BD_Manager = $manager
-        $script:BD_Sam     = $sam
+        # accountExpires arrives as FileTime via $Request.Get; Quest returns a
+        # plain DateTime which is easier to add days to.
+        $u = Get-QADUser $Request.DN -DontUseDefaultIncludedProperties `
+                -IncludedProperties sAMAccountName,accountExpires,manager
+        $currentExpiry = $u.AccountExpires
+        $expiryText = if ($currentExpiry) { $currentExpiry.ToString('yyyy-MM-dd') } else { 'never' }
 
-        # Visible in the activity's script trace (click into the row in Change
-        # History). NOT in the main row text - that takes a throw or a static
-        # AddRecordToReport.
-        Write-Output "[Ex 2] BonusDayCap parameter = $cap"
-        Write-Output "[Ex 2] Reason from web form = '$reason'"
-        Write-Output "[Ex 2] Target sAMAccountName = $sam"
+        # Stash in script scope so downstream activities (Ex 3, Ex 7) can
+        # read without going back to AD - Example 3 return-value pattern.
+        $script:EX_Cap         = [int]$cap
+        $script:EX_DaysReq     = [int]$days
+        $script:EX_Manager     = $manager
+        $script:EX_Sam         = $sam
+        $script:EX_CurrentExp  = $currentExpiry
+
+        Write-Output "[Ex 2] ExtensionCap workflow parameter = $cap"
+        Write-Output "[Ex 2] Days requested (from web form) = $days"
+        Write-Output "[Ex 2] Target = $sam"
+        Write-Output "[Ex 2] Current accountExpires = $expiryText"
         Write-Output "[Ex 2] Manager DN (for Ex 8 approval) = $manager"
 
-        # Throw the human-readable summary so it lands on the activity row
-        # itself (only thing ARS surfaces dynamically). The PS activity has
-        # SuppressError=True so the workflow continues.
-        throw "[Ex 2] $sam requested a bonus day off. Reason: $reason"
+        # Throw the human summary so it lands on the activity row itself
+        # (only ARS-surfaced channel for dynamic text). SuppressError=True
+        # on the activity lets the workflow continue past the throw.
+        throw "[Ex 2] $sam requested +$days day extension. Current expiry: $expiryText. Cap = $cap requests."
     } catch [System.Management.Automation.RuntimeException] {
-        # Re-throw our own intentional summary throw
         throw
     } catch {
         throw "[Ex 2 FAILED] $($_.Exception.Message)"
     }
 }
 
-function Ex7-GrantBonusDay {
-    # EXAMPLE 7: write back to the target object via Set-QADObject.
-    # The IfElse branch (Ex 6) only reaches this function if the user is
-    # under the cap. We bump edsva-BonusDaysGranted by 1.
+function Ex7-ExtendAccess {
+    # EXAMPLE 7: write back to target via Set-QADObject. Reached only after
+    # the IfElse branch (Ex 6) confirms the counter is under the cap AND
+    # the Approval activity (Ex 8) returned approved. Bumps:
+    #   - edsva-AccessExtensionsGranted by 1 (counts requests, not days)
+    #   - accountExpires by the # of days requested in Ex 2
     try {
-        $current = "$($Request.Get('edsva-BonusDaysGranted'))"
+        $current = "$($Request.Get('edsva-AccessExtensionsGranted'))"
         if ([string]::IsNullOrWhiteSpace($current)) { $current = "0" }
         $new = [int]$current + 1
 
-        Set-QADObject $Request.DN -ObjectAttributes @{ 'edsva-BonusDaysGranted' = $new } | Out-Null
+        $days = $script:EX_DaysReq
+        if (-not $days -or $days -le 0) { $days = 5 }
 
-        # Stash for Ex 3
-        $script:BD_NewBalance = $new
+        # If currently null/0 (never expires), start at today+$days;
+        # otherwise add $days to current value.
+        $cur = $script:EX_CurrentExp
+        if (-not $cur -or $cur -eq [DateTime]::MinValue) {
+            $newExpiry = (Get-Date).Date.AddDays($days)
+        } else {
+            $newExpiry = $cur.AddDays($days)
+        }
 
-        Write-Output "[Ex 7] edsva-BonusDaysGranted: $current -> $new"
-        throw "[Ex 7] Granted +1 bonus day. New balance: $new"
+        Set-QADUser $Request.DN -AccountExpires $newExpiry -ObjectAttributes @{
+            'edsva-AccessExtensionsGranted' = $new
+        } | Out-Null
+
+        $script:EX_NewCount  = $new
+        $script:EX_NewExpiry = $newExpiry
+
+        $expText = $newExpiry.ToString('yyyy-MM-dd')
+        Write-Output "[Ex 7] edsva-AccessExtensionsGranted: $current -> $new"
+        Write-Output "[Ex 7] accountExpires bumped to $expText (+$days days)"
+        throw "[Ex 7] Extension #$new granted for $($script:EX_Sam): +$days days. New expiry: $expText."
     } catch [System.Management.Automation.RuntimeException] {
         throw
     } catch {
@@ -85,33 +117,29 @@ function Ex7-GrantBonusDay {
 }
 
 function Ex3-PublishResult {
-    # EXAMPLE 3: return value from script (back to the workflow audit trail).
-    # ARS PowerShellActivities don't have a "return value" the way a regular
-    # function does. The three channels for getting a value back out are:
-    #   1) Write-Output - shows in the script trace only (not main row).
-    #   2) Throw a string - shows on the activity's main row in Change History.
-    #   3) Set-WorkflowVariable - if you need it in a downstream condition.
-    #
-    # Here we demonstrate all three so the audience sees the trade-offs.
-    $new = $script:BD_NewBalance
-    if (-not $new) { $new = "<unknown>" }
+    # EXAMPLE 3: return value from script to the audit trail.
+    # ARS PowerShellActivities have three return-value channels:
+    #   1) Write-Output - script trace only (click into the activity row)
+    #   2) Throw - lands on the activity's main row in Change History
+    #   3) Set-WorkflowVariable - downstream conditions/activities can read it
+    $count   = $script:EX_NewCount
+    $expiry  = $script:EX_NewExpiry
+    if (-not $count)  { $count  = '<unknown>' }
+    $expText = if ($expiry) { $expiry.ToString('yyyy-MM-dd') } else { '<unknown>' }
 
-    # Channel 1 (script trace)
-    Write-Output "[Ex 3 channel 1 / Write-Output] New balance available downstream: $new"
+    Write-Output "[Ex 3 channel 1 / Write-Output] Extension count downstream: $count"
+    Write-Output "[Ex 3 channel 1 / Write-Output] New expiry downstream: $expText"
 
-    # Channel 2 (Change History main row) - via throw with SuppressError=True
-    # on the activity so the workflow doesn't abort
-    throw "[Ex 3] $($script:BD_Sam) now has $new bonus day(s). Reason was: $($script:BD_Reason)"
+    throw "[Ex 3] $($script:EX_Sam) now has $count extension(s). New expiry: $expText. Days requested this round: $($script:EX_DaysReq)."
 }
 
 function Ex9-ClearRequestMarker {
-    # Housekeeping: clear edsva-BonusDayRequest so the button can be used
-    # again on the next request. Not one of the numbered examples - just
-    # makes the demo idempotent.
+    # Cleanup: clear edsva-ExtendAccessRequest so the WI button can be pressed
+    # again. Not one of the numbered examples - makes the demo idempotent.
     try {
-        Set-QADObject $Request.DN -ObjectAttributes @{ 'edsva-BonusDayRequest' = '' } | Out-Null
-        Write-Output "[cleanup] edsva-BonusDayRequest cleared; button ready for next use"
+        Set-QADObject $Request.DN -ObjectAttributes @{ 'edsva-ExtendAccessRequest' = '' } | Out-Null
+        Write-Output "[cleanup] edsva-ExtendAccessRequest cleared; button ready for next use"
     } catch {
-        Write-Output "[cleanup WARN] could not clear edsva-BonusDayRequest: $($_.Exception.Message)"
+        Write-Output "[cleanup WARN] could not clear edsva-ExtendAccessRequest: $($_.Exception.Message)"
     }
 }

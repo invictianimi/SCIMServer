@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -41,6 +42,7 @@ namespace SCIMServer.Web.Services
                 // Check if setup is required
                 using var scope = _serviceProvider.CreateScope();
                 var setupService = scope.ServiceProvider.GetRequiredService<SetupService>();
+                var url = scope.ServiceProvider.GetRequiredService<IConfiguration>()["Kestrel:Endpoints:Http:Url"] ?? "http://localhost:5000";
                 var setupRequired = await setupService.IsSetupRequiredAsync();
 
                 if (setupRequired)
@@ -54,7 +56,7 @@ namespace SCIMServer.Web.Services
                     Console.WriteLine("This appears to be the first time running SCIM Server.");
                     Console.WriteLine("Please open your web browser and navigate to:");
                     Console.WriteLine();
-                    Console.WriteLine("  http://localhost:5000/setup");
+                    Console.WriteLine($"  {url}/setup");
                     Console.WriteLine();
                     Console.WriteLine("to complete the initial configuration.");
                     Console.WriteLine();
@@ -67,8 +69,8 @@ namespace SCIMServer.Web.Services
                     Console.WriteLine("  SCIM Server Started Successfully");
                     Console.WriteLine("========================================");
                     Console.WriteLine();
-                    Console.WriteLine("Web UI: http://localhost:5000");
-                    Console.WriteLine("API Base: http://localhost:5000/scim/v2");
+                    Console.WriteLine($"Web UI: {url}");
+                    Console.WriteLine($"API Base: {url}/scim/v2");
                     Console.WriteLine();
                 }
             }

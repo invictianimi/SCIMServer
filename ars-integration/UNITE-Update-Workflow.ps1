@@ -1,6 +1,13 @@
-# =====================================================================
-# Rebuilds the UNITE Provisioning Hub workflow XAML and pushes it
-# directly into ActiveRoles820.Workflows. Idempotent - safe to re-run.
+# =============================================================================
+#  UNITE 2026   |   One Identity UNITE Conference
+#  Chicago, USA   |   June 2026   |   Grand Ballroom III
+# =============================================================================
+#  Script   : UNITE-Update-Workflow.ps1
+#  Purpose  : Rebuilds the UNITE Provisioning Hub workflow XAML and pushes it
+#             directly into <ActiveRoles DB>.Workflows. Idempotent, re-runnable.
+#  Author   : Jacob Maloney  -  iC Consult, Presales Architect
+#  Contact  : sales@ic-consult.com   (We build IAM that doesn't break.)
+# =============================================================================
 #
 # Per-app structure (HR Connect / IT Helpdesk Portal / Finance Suite):
 #   IfElseBranchActivity (SCIM-{App} was modified)
