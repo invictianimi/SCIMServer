@@ -40,7 +40,7 @@ param(
     [string]$Server   = "192.168.1.30",
     [string]$Database = "ActiveRoles820",
     [string]$User     = "sa",
-    [string]$Password = "ITsupp0rt!",
+    [string]$Password = $env:LAB_SQL_PASSWORD,
 
     # Config-tree containers (lab GUIDs - same as the Extend Contractor deploy).
     [string]$ScriptModuleParentGuid = "b184d443-23d5-4c99-b0d0-8cdc4ec1da37",  # CN=UNITE-2026,CN=Script Modules

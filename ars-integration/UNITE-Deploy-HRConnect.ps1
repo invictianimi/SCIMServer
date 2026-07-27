@@ -21,7 +21,7 @@ param(
     [string]$Server   = "192.168.1.56",
     [string]$Database = "ActiveRoles830",
     [string]$User     = "sa",
-    [string]$Password = "ITsupp0rt!",
+    [string]$Password = $env:LAB_SQL_PASSWORD,
 
     [string]$ScriptModuleParentGuid = "019f78e8-7f74-4ff6-b662-63c83deb8261",  # CN=Script Modules
     [string]$WorkflowParentGuid     = "f63607f2-4b78-43e5-8812-619c0781b5c6",  # CN=UNITE-2026,CN=Workflow,CN=Policies

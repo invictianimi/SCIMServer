@@ -17,7 +17,7 @@ param(
     [string]$Server = "192.168.1.30",
     [string]$Database = "ActiveRoles820",
     [string]$User = "sa",
-    [string]$Password = "ITsupp0rt!",
+    [string]$Password = $env:LAB_SQL_PASSWORD,
     [string]$WorkflowName     = "UNITE - Extend Contractor",
     [string]$OldWorkflowName  = "UNITE Examples - Bonus Day Off",
     [string]$ScriptModuleName    = "UNITE-ExtendContractor",

@@ -7,7 +7,7 @@ param(
   [string]$BaseSql = 'C:\Users\jacob\source\repos\SCIMServer\Database\CreateDatabase.sql'
 )
 $ErrorActionPreference='Stop'
-$cs = "Server=$Server;Database=$Db;User Id=sa;Password=ITsupp0rt!;TrustServerCertificate=true;Connect Timeout=15;"
+$cs = "Server=$Server;Database=$Db;User Id=sa;Password=$env:LAB_SQL_PASSWORD;TrustServerCertificate=true;Connect Timeout=15;"
 $conn = New-Object System.Data.SqlClient.SqlConnection $cs
 $conn.Open()
 function Exec($name,$sql){

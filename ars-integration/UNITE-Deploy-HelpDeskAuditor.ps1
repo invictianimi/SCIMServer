@@ -18,7 +18,7 @@ param(
     [string]$Server   = "192.168.1.56",
     [string]$Database = "ActiveRoles830",
     [string]$User     = "sa",
-    [string]$Password = "ITsupp0rt!",
+    [string]$Password = $env:LAB_SQL_PASSWORD,
 
     # Discovered on .56 (2026-05-31):
     [string]$ScriptModuleParentGuid = "019f78e8-7f74-4ff6-b662-63c83deb8261",  # CN=Script Modules

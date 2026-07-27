@@ -24,7 +24,7 @@ param(
     [string]$Server   = "192.168.1.56",
     [string]$Database = "ActiveRoles830",
     [string]$User     = "sa",
-    [string]$Password = "ITsupp0rt!",
+    [string]$Password = $env:LAB_SQL_PASSWORD,
     [string]$ScriptModuleParentGuid = "019f78e8-7f74-4ff6-b662-63c83deb8261",
     [string]$WorkflowParentGuid     = "f63607f2-4b78-43e5-8812-619c0781b5c6",
     [string]$AdScopeContainerGuid   = "16289041-4cfe-4b48-8a3b-c2c9867cafdc",
